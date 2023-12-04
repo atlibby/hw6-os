@@ -1,3 +1,3 @@
-/Users/andrewlibby/CLionProjects/hw6_os/cmake-build-debug/CMakeFiles/hw6_os.dir
-/Users/andrewlibby/CLionProjects/hw6_os/cmake-build-debug/CMakeFiles/edit_cache.dir
-/Users/andrewlibby/CLionProjects/hw6_os/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/Users/andrewlibby/CLionProjects/hw6-os/hw6_os/cmake-build-debug/CMakeFiles/hw6_os.dir
+/Users/andrewlibby/CLionProjects/hw6-os/hw6_os/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/andrewlibby/CLionProjects/hw6-os/hw6_os/cmake-build-debug/CMakeFiles/rebuild_cache.dir
