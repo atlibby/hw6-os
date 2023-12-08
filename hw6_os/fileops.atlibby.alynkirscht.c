@@ -1,7 +1,3 @@
-//
-// Created by Andrew Libby on 12/4/23.
-//
-
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -71,46 +67,83 @@ int testUtils() {
 }
 
 char *getWord(FILE *fp, char letter, int index) {
-    FileHeader fh;
-    int rc, i, len;
-    WordRecord wr;
+    FileHeader fileHeader;
+    WordRecord wordRecord;
+    int rc;
 
-    // check for bad letter
-    if ( ! isalpha(letter) ) {
+    // Check for bad letter
+    if (!isalpha(letter)) {
         printf("getWord: bad letter '%c'\n", letter);
         return NULL;
     }
 
-    // read the header
+    // Read the header
     fseek(fp, 0, SEEK_SET);
-    rc = fread(&fh, sizeof(FileHeader), 1, fp);
+    rc = fread(&fileHeader, sizeof(FileHeader), 1, fp);
     if (rc != 1) {
         printf("getWord: fread failed\n");
         return NULL;
     }
 
-    // check for bad index
-    if (index < 0 || index >= fh.counts[letter - 'a']) {
+    // Check for bad index
+    if (index < 0 || index >= fileHeader.counts[letter - 'a']) {
         printf("getWord: bad index %d\n", index);
         return NULL;
     }
 
-    // read the word
-    fseek(fp, fh.startPositions[letter - 'a'] + index * sizeof(WordRecord), SEEK_SET);
-    rc = fread(&wr, sizeof(WordRecord), 1, fp);
+    // Check if there are no words starting with the specified letter
+    if (fileHeader.counts[letter - 'a'] == 0) {
+        printf("getWord: no words starting with '%c'\n", letter);
+        return NULL;
+    }
+
+    // Check if index is out of bounds
+    if (index >= fileHeader.counts[letter - 'a']) {
+        printf("getWord: index out of bounds\n");
+        return NULL;
+    }
+
+    // If index is 0, use startPositions directly
+    if (index == 0) {
+        fseek(fp, fileHeader.startPositions[letter - 'a'], SEEK_SET);
+    } else {
+        // Read the last index to get the position
+        fseek(fp, fileHeader.startPositions[letter - 'a'] + (index - 1) * sizeof(WordRecord), SEEK_SET);
+        rc = fread(&wordRecord, sizeof(WordRecord), 1, fp);
+        if (rc != 1) {
+            printf("getWord: fread failed\n");
+            return NULL;
+        }
+
+        // fseek to the correct position for the current index
+        printf("getWord: fseek to %d\n", wordRecord.nextpos);
+        fseek(fp, wordRecord.nextpos, SEEK_SET);
+    }
+
+    // Read the current index
+    rc = fread(&wordRecord, sizeof(WordRecord), 1, fp);
     if (rc != 1) {
         printf("getWord: fread failed\n");
         return NULL;
     }
 
-    return wr.word;
+    // Allocate memory for the word and copy it
+    char *wordCopy = strdup(wordRecord.word);
+    if (wordCopy == NULL) {
+        // Handle memory allocation failure
+        printf("getWord: strdup failed\n");
+        return NULL;
+    }
+
+    return wordCopy;
 }
+
 
 int insertWord(FILE *fp, char *word) {
     char convertedWord[1+MAXWORDLEN];
-    int rc, i, len;
-    WordRecord wr;
-    FileHeader fh;
+    int rc;
+    WordRecord wordRecord;
+    FileHeader fileHeader;
 
     // check for bad word
     rc = checkWord(word);
@@ -120,61 +153,124 @@ int insertWord(FILE *fp, char *word) {
     }
 
     // convert to lower case
-    rc = convertToLower(word, convertedWord);
-    if (rc) {
-        printf("insertWord: convertToLower failed\n");
-        return -1;
-    }
+    convertToLower(word, convertedWord);
 
-    // check for duplicate
-    rc = countWords(fp, convertedWord[0], &len);
-    if (rc) {
-        printf("insertWord: countWords failed\n");
-        return -1;
-    }
-    for (i=0; i<len; ++i) {
-        char *w = getWord(fp, convertedWord[0], i);
-        if (w == NULL) {
-            printf("insertWord: getWord failed\n");
-            return -1;
-        }
-        if (strcmp(w, convertedWord) == 0) {
-            printf("insertWord: duplicate word '%s'\n", convertedWord);
-            return -1;
-        }
-    }
-
-    // write the word
-    strcpy(wr.word, convertedWord);
-    wr.nextpos = -1;
+    // Writing a word to file
+    // If the file is empty
     fseek(fp, 0, SEEK_END);
-    rc = fwrite(&wr, sizeof(WordRecord), 1, fp);
-    if (rc != 1) {
-        printf("insertWord: fwrite failed\n");
-        return -1;
-    }
+    long size = ftell(fp);
+    if (size == 0) {
 
-    // update the header
-    fseek(fp, 0, SEEK_SET);
-    rc = fread(&fh, sizeof(FileHeader), 1, fp);
-    if (rc != 1) {
-        printf("insertWord: fread failed\n");
-        return -1;
-    }
-    fh.counts[convertedWord[0] - 'a']++;
-    fh.startPositions[convertedWord[0] - 'a'] = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    rc = fwrite(&fh, sizeof(FileHeader), 1, fp);
-    if (rc != 1) {
-        printf("insertWord: fwrite failed\n");
-        return -1;
-    }
+        // Initialize counts and startPositions to 0
+        for (int i = 0; i < NUMLETTERS; i++) {
+            fileHeader.counts[i] = 0;
+            fileHeader.startPositions[i] = 0;
+        }
 
+        // Write a new header with header.counts[10] = 1 and header.startPositions = sizeof(Header)
+        fileHeader.counts[convertedWord[0] - 'a']++;
+        fileHeader.startPositions[convertedWord[0] - 'a'] = sizeof(FileHeader);
+        printf("1. StartingPositions[%d] is %d\n", convertedWord[0] - 'a', fileHeader.startPositions[convertedWord[0] - 'a']);
+        fseek(fp, 0, SEEK_SET);
+        fwrite(&fileHeader, sizeof(FileHeader), 1, fp);
+        printf("1.I am writing header.counts[%d] to %d\n", convertedWord[0] - 'a', fileHeader.counts[convertedWord[0] - 'a']);
+
+        // fseek() to position sizeof(Header) and write a record with (word, 0)
+        fseek(fp, sizeof(FileHeader), SEEK_SET);
+        strcpy(wordRecord.word, convertedWord);
+        wordRecord.nextpos = 0;
+        fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
+        printf("1.I am writing word: %s with position %d\n", wordRecord.word, wordRecord.nextpos);
+
+    // If the file is not empty
+    } else {
+        //  read the header
+        fseek(fp, 0, SEEK_SET);
+        fread(&fileHeader, sizeof(FileHeader), 1, fp);
+
+        // increment header.counts[10]
+        printf("2. I am reading header.counts[%d] to %d\n", convertedWord[0] - 'a', fileHeader.counts[convertedWord[0] - 'a']);
+        fileHeader.counts[convertedWord[0] - 'a']++;
+        printf("2. I am writing header.counts[%d] to %d\n", convertedWord[0] - 'a', fileHeader.counts[convertedWord[0] - 'a']);
+
+        // if header.counts[10] == 1
+        if (fileHeader.counts[convertedWord[0] - 'a'] == 1) {
+
+            // set header.startPositions[10] to the current size of the file (must seek to file start and write the updated header)
+            fseek(fp, 0,SEEK_END);
+            fread(&fileHeader, sizeof(FileHeader), 1, fp);
+            fileHeader.startPositions[convertedWord[0] - 'a'] = ftell(fp);
+            printf("2. StartingPositions[%d] is %d\n", convertedWord[0] - 'a', fileHeader.startPositions[convertedWord[0] - 'a']);
+            fseek(fp, 0, SEEK_SET);
+            fwrite(&fileHeader, sizeof(FileHeader), 1, fp);
+
+            // fseek() to the end of the file and write a record with (word, 0)
+            fseek(fp, 0, SEEK_END);
+            strcpy(wordRecord.word, convertedWord);
+            wordRecord.nextpos = 0;
+            fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
+            //printf("2. I am writing word: %s with position %d\n", wordRecord.word, wordRecord.nextpos);
+
+        //  else
+        } else {
+            fseek(fp, sizeof(FileHeader), SEEK_SET);
+            while (fread(&wordRecord, sizeof(WordRecord), 1, fp) == 1) {
+                // Check if the word already exists
+                if (strcmp(wordRecord.word, convertedWord) == 0) {
+                    printf("insertWord: duplicate word '%s'\n", convertedWord);
+                    return -1;
+                }
+            }
+            // successively read the records for words starting with 'k'
+            fseek(fp, sizeof(FileHeader), SEEK_SET);
+            int index = 0;
+            while (fread(&wordRecord, sizeof(WordRecord), 1, fp) == 1) { // while there are still records to read
+
+                printf("wordRecord.word is %s and wordRecord.nextpos is %d\n", wordRecord.word, wordRecord.nextpos);
+                if (wordRecord.word[0] == convertedWord[0] && wordRecord.nextpos == 0) {
+                    // update the nextpos last record for words starting with 'k' to the current file size (must read this record, update it, and write it)
+                    printf("Beginning: wordrecord.word is %s and wordrecord.nextpos is %d\n", wordRecord.word, wordRecord.nextpos);
+
+                    // Get the position of the beginning of the word
+                    fseek(fp, sizeof(FileHeader), SEEK_SET);
+                    long wordPosition = ftell(fp) + (sizeof(WordRecord) * index);
+
+                    fseek(fp, 0, SEEK_END);
+                    fread(&wordRecord, sizeof(WordRecord), 1, fp);
+                    wordRecord.nextpos = ftell(fp);
+                    printf("2. I am writing word: %s with position %d\n", wordRecord.word, wordRecord.nextpos);
+
+                    // fseek to the beginning of the word
+                    fseek(fp, wordPosition, SEEK_SET);
+                    // Write the updated record back to the file
+                    fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
+                    printf("3. I am writing word: %s with position %d\n", wordRecord.word, wordRecord.nextpos);
+
+                    // fseek() to the end of the file and write a record with ("kerfuffle", 0)
+                    fseek(fp, 0, SEEK_END);
+                    strcpy(wordRecord.word, convertedWord);
+                    wordRecord.nextpos = 0;
+                    fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
+                    printf("3. I am writing word: %s with position %d\n", wordRecord.word, wordRecord.nextpos);
+
+                    fseek(fp, ftell(fp) - sizeof(WordRecord), SEEK_SET);
+
+                    // Write the updated record back to the file
+                    fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
+                    printf("3. I am writing word: %s with position %d\n", wordRecord.word, wordRecord.nextpos);
+                }
+                index++;
+            }
+            // Update the header
+            fseek(fp, 0, SEEK_SET);
+            fwrite(&fileHeader, sizeof(FileHeader), 1, fp);
+        }
+    }
     return 0;
 }
 
 int countWords(FILE *fp, char letter, int *count) {
-    FileHeader fh;
+    FileHeader fileHeader;
     int rc;
 
     // check for bad letter
@@ -185,7 +281,7 @@ int countWords(FILE *fp, char letter, int *count) {
 
     // read the header
     fseek(fp, 0, SEEK_SET);
-    rc = fread(&fh, sizeof(FileHeader), 1, fp);
+    rc = fread(&fileHeader, sizeof(FileHeader), 1, fp);
     if (rc != 1) {
         printf("countWords: fread failed\n");
         return 1;
@@ -198,6 +294,7 @@ int countWords(FILE *fp, char letter, int *count) {
     }
 
     // return the count
-    *count = fh.counts[letter - 'a'];
+    *count = fileHeader.counts[letter - 'a'];
+    printf("countWords: count for '%c' is %d\n", letter, fileHeader.counts[letter - 'a']);
     return 0;
 }

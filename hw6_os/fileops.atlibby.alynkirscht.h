@@ -19,7 +19,7 @@ typedef struct {
     long nextpos;
 } WordRecord;
 
-// return 1 if any chararacters are non-alphabetic;
+// return 1 if any characters are non-alphabetic;
 // otherwise return 0
 //int checkWord(char *word);
 
