@@ -73,7 +73,7 @@ char *getWord(FILE *fp, char letter, int index) {
 
     // Check for bad letter
     if (!isalpha(letter)) {
-        printf("getWord: bad letter '%c'\n", letter);
+        printf("ERROR getWord: bad letter '%c'\n", letter);
         return NULL;
     }
 
@@ -81,61 +81,50 @@ char *getWord(FILE *fp, char letter, int index) {
     fseek(fp, 0, SEEK_SET);
     rc = fread(&fileHeader, sizeof(FileHeader), 1, fp);
     if (rc != 1) {
-        printf("getWord: fread failed\n");
+        printf("ERROR getWord: fread failed\n");
         return NULL;
     }
 
     // Check for bad index
     if (index < 0 || index >= fileHeader.counts[letter - 'a']) {
-        printf("getWord: bad index %d\n", index);
+        printf("ERROR getWord: bad index %d\n", index);
         return NULL;
     }
 
     // Check if there are no words starting with the specified letter
     if (fileHeader.counts[letter - 'a'] == 0) {
-        printf("getWord: no words starting with '%c'\n", letter);
+        printf("ERROR getWord: no words starting with '%c'\n", letter);
         return NULL;
     }
 
     // Check if index is out of bounds
     if (index >= fileHeader.counts[letter - 'a']) {
-        printf("getWord: index out of bounds\n");
+        printf("ERROR getWord: index out of bounds\n");
         return NULL;
     }
 
-    // If index is 0, use startPositions directly
-    if (index == 0) {
+
+    for (int i = 0; i <= index; ++i) {
         fseek(fp, fileHeader.startPositions[letter - 'a'], SEEK_SET);
-    } else {
-        // Read the last index to get the position
-        fseek(fp, fileHeader.startPositions[letter - 'a'] + (index - 1) * sizeof(WordRecord), SEEK_SET);
-        rc = fread(&wordRecord, sizeof(WordRecord), 1, fp);
-        if (rc != 1) {
-            printf("getWord: fread failed\n");
-            return NULL;
+        if (i == 0) {
+            fread(&wordRecord, sizeof(wordRecord), 1, fp);
+        } else {
+
+            fseek(fp, wordRecord.nextpos, SEEK_SET);
+            fread(&wordRecord, sizeof(wordRecord), 1, fp);
         }
-
-        // fseek to the correct position for the current index
-        fseek(fp, wordRecord.nextpos, SEEK_SET);
     }
-
-    // Read the current index
-    rc = fread(&wordRecord, sizeof(WordRecord), 1, fp);
-    if (rc != 1) {
-        printf("getWord: fread failed\n");
-        return NULL;
-    }
-
     // Allocate memory for the word and copy it
     char *wordCopy = strdup(wordRecord.word);
     if (wordCopy == NULL) {
         // Handle memory allocation failure
-        printf("getWord: strdup failed\n");
+        printf("ERROR getWord: strdup failed\n");
         return NULL;
     }
 
     return wordCopy;
 }
+
 
 
 int insertWord(FILE *fp, char *word) {
@@ -147,7 +136,7 @@ int insertWord(FILE *fp, char *word) {
     // check for bad word
     rc = checkWord(word);
     if (rc) {
-        printf("insertWord: bad word '%s'\n", word);
+        printf("ERROR insertWord: bad word '%s'\n", word);
         return -1;
     }
 
@@ -178,7 +167,7 @@ int insertWord(FILE *fp, char *word) {
         wordRecord.nextpos = 0;
         fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
 
-    // If the file is not empty
+        // If the file is not empty
     } else {
         //  read the header
         fseek(fp, 0, SEEK_SET);
@@ -203,16 +192,18 @@ int insertWord(FILE *fp, char *word) {
             wordRecord.nextpos = 0;
             fwrite(&wordRecord, sizeof(WordRecord), 1, fp);
 
-        //  else
+            //  else
         } else {
+            // ------------------------------------- EXTRA CREDIT -------------------------------------
             fseek(fp, sizeof(FileHeader), SEEK_SET);
             while (fread(&wordRecord, sizeof(WordRecord), 1, fp) == 1) {
                 // Check if the word already exists
                 if (strcmp(wordRecord.word, convertedWord) == 0) {
-                    printf("insertWord: duplicate word '%s'\n", convertedWord);
+                    printf("EXTRA CREDIT: duplicate word '%s'\n", convertedWord);
                     return -1;
                 }
             }
+            // ------------------------------------- EXTRA CREDIT -------------------------------------
             // successively read the records for words starting with 'k'
             fseek(fp, sizeof(FileHeader), SEEK_SET);
             int index = 0;
@@ -261,7 +252,7 @@ int countWords(FILE *fp, char letter, int *count) {
 
     // check for bad letter
     if ( ! isalpha(letter) ) {
-        printf("countWords: bad letter '%c'\n", letter);
+        printf("ERROR countWords: bad letter '%c'\n", letter);
         return 1;
     }
 
@@ -269,18 +260,17 @@ int countWords(FILE *fp, char letter, int *count) {
     fseek(fp, 0, SEEK_SET);
     rc = fread(&fileHeader, sizeof(FileHeader), 1, fp);
     if (rc != 1) {
-        printf("countWords: fread failed\n");
+        printf("ERROR countWords: fread failed\n");
         return 1;
     }
 
     // check for bad letter
     if ( ! isalpha(letter) ) {
-        printf("countWords: bad letter '%c'\n", letter);
+        printf(" ERROR countWords: bad letter '%c'\n", letter);
         return 1;
     }
 
     // return the count
     *count = fileHeader.counts[letter - 'a'];
-    printf("countWords: count for '%c' is %d\n", letter, fileHeader.counts[letter - 'a']);
     return 0;
 }
